@@ -642,6 +642,8 @@ func (c *Client) watchPodUntilComplete(timeout time.Duration, info *resource.Inf
 	return err
 }
 
+//get the relation pods of kubernetes resources
+// kubernetes resource used select labels to relate pods
 func (c *Client) getRelationPods(infos []*resource.Info) map[string][]api.Pod {
 	var objPods = make(map[string][]api.Pod)
 
@@ -651,6 +653,7 @@ func (c *Client) getRelationPods(infos []*resource.Info) map[string][]api.Pod {
 	return objPods
 }
 
+//get an kubernetes resources's relation pods
 func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]api.Pod) (map[string][]api.Pod, error) {
 	if info == nil {
 		return objPods, nil
@@ -671,7 +674,7 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 
 	selector, err := getSelectorFromObject(versioned)
 
-	log.Printf("getSelectRelationPod selector: %+v", selector)
+	c.Log("getSelectRelationPod selector: %+v", selector)
 	if err != nil {
 		return objPods, err
 	}
@@ -686,9 +689,7 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 	}
 
 	for _, pod := range pods.Items {
-
-		log.Printf("get select relation pod: %v/%v", pod.Namespace, pod.Name)
-
+		c.Log("get select relation pod: %s/%s", pod.Namespace, pod.Name)
 		if pod.APIVersion == "" {
 			pod.APIVersion = "v1"
 		}
@@ -696,14 +697,12 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 		if pod.Kind == "" {
 			pod.Kind = "Pod"
 		}
-
 		vk := pod.GroupVersionKind().Version + "/" + pod.GroupVersionKind().Kind
 
 		if !isFoundPod(objPods[vk], pod) {
 			objPods[vk] = append(objPods[vk], pod)
 		}
 	}
-
 	return objPods, nil
 }
 
@@ -713,9 +712,9 @@ func isFoundPod(podItem []api.Pod, pod api.Pod) bool {
 			return true
 		}
 	}
-
 	return false
 }
+
 func isFoundPodInfo(podItem []api.Pod, podInfo *resource.Info) bool {
 	if podInfo == nil {
 		return false
