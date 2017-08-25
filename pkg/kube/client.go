@@ -664,6 +664,8 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 		return objPods, err
 	}
 
+	c.Log("get relation pod of object: %s/%s/%s", info.Namespace, info.Mapping.GroupVersionKind.Kind, info.Name)
+
 	versioned, err := c.AsVersionedObject(info.Object)
 	if runtime.IsNotRegisteredError(err) {
 		return objPods, nil
@@ -674,7 +676,6 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 
 	selector, err := getSelectorFromObject(versioned)
 
-	c.Log("getSelectRelationPod selector: %+v", selector)
 	if err != nil {
 		return objPods, err
 	}
@@ -689,7 +690,6 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 	}
 
 	for _, pod := range pods.Items {
-		c.Log("get select relation pod: %s/%s", pod.Namespace, pod.Name)
 		if pod.APIVersion == "" {
 			pod.APIVersion = "v1"
 		}
