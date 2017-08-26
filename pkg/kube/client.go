@@ -157,7 +157,17 @@ func (c *Client) Get(namespace string, reader io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	objPods := c.getRelationPods(infos)
+
+	var objPods = make(map[string][]api.Pod)
+
+	for _, value := range infos {
+		objPods, err = c.getSelectRelationPod(value, objPods)
+		if err != nil {
+			c.Log("Get the relation pod is failed, err:%s", err.Error())
+			continue
+		}
+	}
+
 	missing := []string{}
 	err = perform(infos, func(info *resource.Info) error {
 		c.Log("Doing get for %s: %q", info.Mapping.GroupVersionKind.Kind, info.Name)
@@ -642,18 +652,8 @@ func (c *Client) watchPodUntilComplete(timeout time.Duration, info *resource.Inf
 	return err
 }
 
-//get the relation pods of kubernetes resources
-// kubernetes resource used select labels to relate pods
-func (c *Client) getRelationPods(infos []*resource.Info) map[string][]api.Pod {
-	var objPods = make(map[string][]api.Pod)
-
-	for _, value := range infos {
-		objPods, _ = c.getSelectRelationPod(value, objPods)
-	}
-	return objPods
-}
-
 //get an kubernetes resources's relation pods
+// kubernetes resource used select labels to relate pods
 func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]api.Pod) (map[string][]api.Pod, error) {
 	if info == nil {
 		return objPods, nil
