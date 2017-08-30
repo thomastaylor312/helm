@@ -160,23 +160,20 @@ func (c *Client) Get(namespace string, reader io.Reader) (string, error) {
 
 	var objPods = make(map[string][]api.Pod)
 
-	for _, value := range infos {
-		objPods, err = c.getSelectRelationPod(value, objPods)
-		if err != nil {
-			c.Log("Get the relation pod is failed, err:%s", err.Error())
-			continue
-		}
-	}
-
 	missing := []string{}
 	err = perform(infos, func(info *resource.Info) error {
+		var err error
 		c.Log("Doing get for %s: %q", info.Mapping.GroupVersionKind.Kind, info.Name)
 		if err := info.Get(); err != nil {
 			c.Log("WARNING: Failed Get for resource %q: %s", info.Name, err)
 			missing = append(missing, fmt.Sprintf("%v\t\t%s", info.Mapping.Resource, info.Name))
 			return nil
 		}
-
+		objPods, err = c.getSelectRelationPod(info, objPods)
+		// Not the end of the world, just log it
+		if err != nil {
+			c.Log("Getting the related pod failed: %s", err)
+		}
 		// Use APIVersion/Kind as grouping mechanism. I'm not sure if you can have multiple
 		// versions per cluster, but this certainly won't hurt anything, so let's be safe.
 		gvk := info.ResourceMapping().GroupVersionKind
@@ -193,11 +190,14 @@ func (c *Client) Get(namespace string, reader io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	//here, we will add the objPods to the objs
 	for key, podItems := range objPods {
-		for _, pod := range podItems {
-			objs[key] = append(objs[key], &pod)
+		// Initialize the array if it doesn't exist
+		if _, ok := objs[key]; !ok {
+			objs[key] = []runtime.Object{}
+		}
+		for i := range podItems {
+			objs[key] = append(objs[key], &podItems[i])
 		}
 	}
 	// Ok, now we have all the objects grouped by types (say, by v1/Pod, v1/Service, etc.), so
@@ -659,13 +659,6 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 		return objPods, nil
 	}
 
-	err := info.Get()
-	if err != nil {
-		return objPods, err
-	}
-
-	c.Log("get relation pod of object: %s/%s/%s", info.Namespace, info.Mapping.GroupVersionKind.Kind, info.Name)
-
 	versioned, err := c.AsVersionedObject(info.Object)
 	if runtime.IsNotRegisteredError(err) {
 		return objPods, nil
@@ -674,13 +667,17 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 		return objPods, err
 	}
 
-	selector, err := getSelectorFromObject(versioned)
+	// We can ignore this error because it will only error if it isn't a type that doesn't
+	// have pods. In that case, we don't care
+	selector, _ := getSelectorFromObject(versioned)
 
-	if err != nil {
-		return objPods, err
+	selectorString := labels.Set(selector).AsSelector().String()
+	// If we have an empty selector, this likely is a service or config map, so bail out now
+	if selectorString == "" {
+		return objPods, nil
 	}
-	client, _ := c.ClientSet()
 
+	client, _ := c.ClientSet()
 	pods, err := client.Core().Pods(info.Namespace).List(metav1.ListOptions{
 		FieldSelector: fields.Everything().String(),
 		LabelSelector: labels.Set(selector).AsSelector().String(),
@@ -689,6 +686,7 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 		return objPods, err
 	}
 
+	c.Log("Getting related pods of object: %s/%s/%s", info.Namespace, info.Mapping.GroupVersionKind.Kind, info.Name)
 	for _, pod := range pods.Items {
 		if pod.APIVersion == "" {
 			pod.APIVersion = "v1"
@@ -698,7 +696,10 @@ func (c *Client) getSelectRelationPod(info *resource.Info, objPods map[string][]
 			pod.Kind = "Pod"
 		}
 		vk := pod.GroupVersionKind().Version + "/" + pod.GroupVersionKind().Kind
-
+		// Make sure we actually have an array to append to
+		if _, ok := objPods[vk]; !ok {
+			objPods[vk] = []api.Pod{}
+		}
 		if !isFoundPod(objPods[vk], pod) {
 			objPods[vk] = append(objPods[vk], pod)
 		}
